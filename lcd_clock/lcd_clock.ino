@@ -56,7 +56,7 @@ typedef struct button_tag
 uint32_t ButtonState(BUTTON *pButtons, int iButtonCount);
 
 #define BUTTON_COUNT 2
-int iDigitPos[5];
+int iDigitPos[6];
 
 #ifdef BIG_LCD
 BUTTON buttons[BUTTON_COUNT] = {
@@ -121,7 +121,7 @@ int iTouch, iOldTouch = -1;
              if (myTime.tm_min > 59) { myTime.tm_min -= 60;}
              break;
          }
-         lcd.fillRect(0, 0, 480, iStartY+20, TFT_BLACK);
+         lcd.fillRect(0, 0, lcd.width(), iStartY+20, TFT_BLACK);
          sprintf(szTime, "%02d:%02d", myTime.tm_hour, myTime.tm_min);
          lcd.setTextColor(TFT_CYAN, TFT_BLACK);
          lcd.drawString(szTime, iStartX, iStartY); // erase old character
@@ -167,6 +167,9 @@ void setup()
 {
  // Serial.begin(115200);
   rtc.init(SDA_PIN, SCL_PIN, 0);
+  if (rtc.getType() == RTC_RV3032) {
+    rtc.setVBackup(true); // turn on the charge pump for a capacitor to hold the time during power down
+  }
   lcd.begin(LCD);
   lcd.rtInit(); // start the resistive touch
   lcd.fillScreen(TFT_BLACK);
@@ -178,6 +181,7 @@ void setup()
   iDigitPos[2] = iStartX+iCharWidth*2;
   iDigitPos[3] = iStartX+iColonWidth + iCharWidth*2;
   iDigitPos[4] = iDigitPos[3] + iCharWidth;
+  iDigitPos[5] = lcd.width();
 
   if (mySensor.init(SDA_PIN, SCL_PIN, 1, 100000) == SCD41_SUCCESS) {
     // Serial.println("Found SCD41 sensor!");
