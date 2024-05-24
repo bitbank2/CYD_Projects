@@ -4,7 +4,10 @@
 #include "humidity.h"
 #include "temp_bw.h"
 
-//#define BIG_LCD
+// Define BIG_LCD for 480x270 or 480x320 boards, otherwise it defaults to 320x240
+#define BIG_LCD
+#define TWELVE_HOUR
+#define FARENHEIT
 
 #ifdef BIG_LCD
 #define LCD DISPLAY_CYD_543
@@ -186,6 +189,9 @@ void setup()
   if (mySensor.init(SDA_PIN, SCL_PIN, 1, 100000) == SCD41_SUCCESS) {
     // Serial.println("Found SCD41 sensor!");
      mySensor.start(); // start sampling mode
+#ifdef FARENHEIT
+     mySensor.setUnits(SCD41_UNIT_FARENHEIT);
+#endif
      bHasCO2 = true;
   }
 } /* setup() */
@@ -207,6 +213,10 @@ for (i=0; i<BUTTON_COUNT; i++) {
 while (1) {
     usColor = (bNightMode) ? NIGHT_COLOR: TFT_GREEN;
     rtc.getTime(&myTime); // Read the current time from the RTC into our time structure
+#ifdef TWELVE_HOUR
+    if (myTime.tm_hour > 12) myTime.tm_hour -= 12;
+    else if (myTime.tm_hour == 0) myTime.tm_hour = 12;
+#endif
     sprintf(szTime, "%02d:%02d", myTime.tm_hour, myTime.tm_min);
     if ((iTick & 0x1f) < 0x10) { // flash the colon
         szTime[2] = ' ';
