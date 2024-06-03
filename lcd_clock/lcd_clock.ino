@@ -8,9 +8,13 @@
 #define BIG_LCD
 #define TWELVE_HOUR
 #define FARENHEIT
+//#define CAP_TOUCH
 
 #ifdef BIG_LCD
 #define LCD DISPLAY_CYD_543
+//#define LCD DISPLAY_CYD_35
+//#define SDA_PIN 21
+//#define SCL_PIN 22
 #define SDA_PIN 17
 #define SCL_PIN 18
 #define ICON_X1 60
@@ -39,8 +43,18 @@ const int iStartY = 160;
 const int iStartY = 104;
 #endif
 
+#ifdef CAP_TOUCH
+#define CT_SDA 33
+#define CT_SCL 32
+#define CT_RST 25
+#define CT_INT -1
+#include <bb_captouch.h>
+BBCapTouch bbct;
+#endif
+
 SCD41 mySensor;
 BBRTC rtc;
+TOUCHINFO ti;
 BB_SPI_LCD lcd;
 bool bHasCO2 = false;
 int iCharWidth, iColonWidth;
@@ -82,20 +96,19 @@ void lightSleep(uint64_t time_in_ms)
 void SetTime(void)
 {
 char szTime[32];
-TOUCHINFO ti;
 uint32_t u32 = 0;
 int iTouch, iOldTouch = -1;
-
+//Serial.begin(115200);
+    lcd.fillRect(0, 0, lcd.width(), iStartY+20, TFT_BLACK);
     rtc.getTime(&myTime); // Read the current time from the RTC into our time structure
     sprintf(szTime, "%02d:%02d", myTime.tm_hour, myTime.tm_min);
     lcd.setFreeFont(&FONT);
     lcd.setTextColor(TFT_CYAN, TFT_BLACK);
     lcd.drawString(szTime, iStartX, iStartY); // erase old character
 
+    iTouch = -1;
     while (u32 != 1) { // loop until the user presses "Set Time" again
-      u32 = ButtonState(buttons, BUTTON_COUNT);
-      lcd.rtReadTouch(&ti);
-      iTouch = -1;
+      u32 = ButtonState(buttons, BUTTON_COUNT); // read the touch sensor here
       if (ti.count >= 1 && ti.y[0] < iStartY) {
         if (ti.x[0] > iDigitPos[0] && ti.x[0] < iDigitPos[2]) { // change hour
            iTouch = ((ti.x[0] - iDigitPos[0])/iCharWidth);
@@ -104,12 +117,15 @@ int iTouch, iOldTouch = -1;
            iTouch = 3 + ((ti.x[0] - iDigitPos[3])/iCharWidth);
           // Serial.printf("x = %d, digit = %d\n", ti.x[0], iTouch);
         }
+      } else {
+        iTouch = -1;
       }
       if (iOldTouch == -1 && iTouch != -1) { // update
+//         Serial.printf("change digit %d\n", iTouch);
          switch (iTouch) {
           case 0: // hours 10's
              myTime.tm_hour += 10;
-             if (myTime.tm_hour > 23) { myTime.tm_hour -= 24;}
+             if (myTime.tm_hour > 23) { myTime.tm_hour -= 20;}
              break;
           case 1: // hours 1's
              myTime.tm_hour++;
@@ -132,7 +148,8 @@ int iTouch, iOldTouch = -1;
       iOldTouch = iTouch;
       delay(50); // don't let the user touch things too quickly
     } // while (1)
-    rtc.setTime(&myTime); // update the new info    
+    rtc.setTime(&myTime); // update the new info
+    lcd.fillRect(0, 0, lcd.width(), iStartY+20, TFT_BLACK);
 } /* SetTime() */
 
 void DrawButton(BUTTON *pButton)
@@ -147,12 +164,15 @@ int iLen;
 
 uint32_t ButtonState(BUTTON *pButtons, int iButtonCount)
 {
-  TOUCHINFO ti;
   int i;
   static uint32_t u32OldButtons = 0;
   uint32_t u32, u32Buttons = 0;
 
+#ifdef CAP_TOUCH
+  bbct.getSamples(&ti);
+#else
   lcd.rtReadTouch(&ti);
+#endif
   if (ti.count >= 1) {
       for (i=0; i<iButtonCount; i++) {
         if (ti.x[0] >= pButtons[i].x && ti.x[0] < pButtons[i].x + pButtons[i].w &&
@@ -174,7 +194,12 @@ void setup()
     rtc.setVBackup(true); // turn on the charge pump for a capacitor to hold the time during power down
   }
   lcd.begin(LCD);
+#ifdef CAP_TOUCH
+  bbct.init(CT_SDA, CT_SCL, CT_RST, CT_INT);
+  bbct.setOrientation(90, 320, 480); // angle, native width, native height
+#else
   lcd.rtInit(); // start the resistive touch
+#endif
   lcd.fillScreen(TFT_BLACK);
   iCharWidth = FONT_GLYPHS['0' - ' '].xAdvance;
   iColonWidth = FONT_GLYPHS[':' - ' '].xAdvance;
