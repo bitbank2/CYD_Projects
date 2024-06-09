@@ -14,6 +14,7 @@ HTTPClient http;
 #include "Roboto_Black_40.h"
 #include "Roboto_Black_20.h"
 #include "Roboto_25.h"
+#include "Roboto_Thin66pt7b.h"
 // black and white graphics
 #include "humidity_4bpp.h"
 #include "sunrise_4bpp.h"
@@ -38,6 +39,13 @@ String sSunrise, sSunset, updated;
 int iTemp[16], iHumidity[16], iWeatherCode[16]; // hourly conditions
 uint8_t uvIndex[8];
 int iRainChance[16];
+int iDigitPos[6]; // clock digit positions
+int iCharWidth, iColonWidth;
+int iStartX, iStarty;
+#define FONT Roboto_Thin66pt7b
+#define FONT_GLYPHS Roboto_Thin66pt7bGlyphs
+uint16_t usColor = TFT_GREEN; // time color
+const int iStartY = 222;
 
 const char *szMonths[] = {"JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER"};
 const int iMonthLens[] = {31, 28, 31, 30, 31, 30, 31, 30, 30, 31, 30, 31};
@@ -138,11 +146,10 @@ void DisplayWeather(void)
   lcd.fillScreen(TFT_BLACK);
   // show the update time+date
   lcd.setFont(FONT_8x8);
-  lcd.setCursor(lcd.width() - (19*8),lcd.height()-8);
+  lcd.setCursor(0,lcd.height()-8);
   lcd.setTextColor(TFT_WHITE, TFT_BLACK);
+  lcd.print("Last Update: ");
   lcd.print(updated.c_str());
-  lcd.setCursor(lcd.width() - (15*8),lcd.height()-16);
-  lcd.print("Last Update");
 //  Serial.println(szTemp);
   if (lcd.width() < 200) { // super small layout (FUTURE?)
      // display sunrise+sunset times first
@@ -406,9 +413,9 @@ int i, iHour, httpCode = -1;
 #ifdef ARDUINO_ARCH_ESP32
      String payload = http.getString();
      http.end();
-     WiFi.disconnect(true);
-     WiFi.mode(WIFI_OFF);
-     esp_wifi_deinit(); // free memory used by WiFi
+//     WiFi.disconnect(true);
+//     WiFi.mode(WIFI_OFF);
+//     esp_wifi_deinit(); // free memory used by WiFi
 #endif // ESP32
 
 #ifdef LOG_TO_SERIAL
@@ -501,7 +508,7 @@ int i, iHour, httpCode = -1;
 
 void setup() {
 //  int iTimeout;
-lcd.begin(DISPLAY_WT32_SC01_PLUS);
+lcd.begin(DISPLAY_CYD);
 lcd.fillScreen(TFT_BLACK);
 lcd.setFont(FONT_12x16);
 lcd.setTextColor(TFT_GREEN, TFT_BLACK);
@@ -509,6 +516,17 @@ lcd.println("Starting WiFi Manager...");
 #ifdef LOG_TO_SERIAL
   Serial.begin(115200);
 #endif // LOG_TO_SERIAL
+
+// Prepare positions of clock digits
+  iCharWidth = FONT_GLYPHS['0' - ' '].xAdvance;
+  iColonWidth = FONT_GLYPHS[':' - ' '].xAdvance;
+  iStartX = (lcd.width() - (4*iCharWidth + iColonWidth))/2;
+  iDigitPos[0] = iStartX;
+  iDigitPos[1] = iStartX+iCharWidth;
+  iDigitPos[2] = iStartX+iCharWidth*2;
+  iDigitPos[3] = iStartX+iColonWidth + iCharWidth*2;
+  iDigitPos[4] = iDigitPos[3] + iCharWidth;
+  iDigitPos[5] = lcd.width();
 
 // Local instance of WiFiManager
 WiFiManager wm;
@@ -553,11 +571,13 @@ bool res;
   timeClient.begin();
   timeClient.setTimeOffset(TZ_OFFSET);  //My timezone
   timeClient.update();
+  Serial.println(timeClient.getFormattedTime());
   unsigned long epochTime = timeClient.getEpochTime();
   //Get a time structure
   struct tm *ptm = gmtime ((time_t *)&epochTime);
   memcpy(&myTime, ptm, sizeof(myTime)); // get the current time struct into a local copy
-  timeClient.end(); // don't need it any more
+  Serial.printf("Current time: %02d:%02d:%02d\n", myTime.tm_hour, myTime.tm_min, myTime.tm_sec);
+//  timeClient.end(); // don't need it any more
 } /* setup() */
 
 void lightSleep(uint64_t time_in_ms)
@@ -584,15 +604,59 @@ void deepSleep(uint64_t time_in_ms)
 #endif
 }
 
+void DisplayTime(void)
+{
+char szTemp[2], szTime[32];
+static char szOld[32] = "       ";
+int i, iHour, iMin, iSec;
+struct tm *ptm;
+unsigned long epochTime;
+
+  timeClient.update();
+  iHour = timeClient.getHours();
+  iMin = timeClient.getMinutes();
+  iSec = timeClient.getSeconds();
+#ifdef TWELVE_HOUR
+    if (iHour > 12) iHour -= 12;
+    else if (iHour == 0) iHour = 12;
+#endif
+    sprintf(szTime, "%02d:%02d", iHour, iMin);
+    if (iSec & 0x1) { // flash the colon
+        szTime[2] = ' ';
+    }
+    if (strcmp(szTime, szOld)) { // digit(s) changed, redraw them to minimize flicker
+      szTemp[1] = 0;
+      lcd.setFreeFont(&FONT);
+      for (i=0; i<5; i++) {
+         if (szTime[i] != szOld[i]) {
+            szTemp[0] = szOld[i];
+            lcd.setTextColor(TFT_BLACK, TFT_BLACK+1);
+            lcd.drawString(szTemp, iDigitPos[i], iStartY); // erase old character
+            // draw new character
+            if (i == 0 && szTime[0] == '0') continue; // skip leading 0 for hours
+            lcd.setTextColor(usColor, TFT_BLACK);
+            szTemp[0] = szTime[i];
+            lcd.drawString(szTemp, iDigitPos[i], iStartY);
+         } // if needs redraw
+      } // for i
+      strcpy(szOld, szTime);
+    }
+} /* DisplayTime() */
+
 void loop() {
 int iSleepTime;
+int i;
 
   if (GetWeather(&iSleepTime)) {
     DisplayWeather();
-    delay(iSleepTime);
+    for (i=0; i<3600; i++) { // update weather every hour
+      DisplayTime();
+      delay(1000);
+    }
+//    delay(iSleepTime);
    // lightSleep(iSleepTime); 
     //deepSleep(iSleepTime); 
   }
-  lightSleep(900000);
+//  lightSleep(900000);
 //  deepSleep(900000); // failed to get weather info? try again every 15 minutes
 } /* loop() */
