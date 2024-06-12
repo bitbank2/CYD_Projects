@@ -1,10 +1,18 @@
 //
 // ESP32 CYD (Cheap-Yellow-Display) Weather Info
+// written by Larry Bank
+// Copyright (c) 2024 BitBank Software, Inc.
 //
+// Define the display type used and the rest of the code should "just work"
+
+#define LCD DISPLAY_CYD_2USB
+
 #include <NTPClient.h>           //https://github.com/taranais/NTPClient
 #include <WiFi.h>
 #include <esp_wifi.h>
 #include <HTTPClient.h>
+#include <ESP32Time.h>
+ESP32Time rtc(0);
 HTTPClient http;
 #include <WiFiManager.h> // https://github.com/tzapu/WiFiManager
 #include <ArduinoJson.h>
@@ -506,9 +514,70 @@ int i, iHour, httpCode = -1;
    }
 } /* GetWeather() */
 
+void GetInternetTime()
+{
+// Initialize a NTPClient to get time
+  timeClient.begin();
+  timeClient.setTimeOffset(TZ_OFFSET);  //My timezone
+  timeClient.update();
+  Serial.println(timeClient.getFormattedTime());
+  unsigned long epochTime = timeClient.getEpochTime();
+  //Get a time structure
+  struct tm *ptm = gmtime ((time_t *)&epochTime);
+  memcpy(&myTime, ptm, sizeof(myTime)); // get the current time struct into a local copy
+  rtc.setTime(epochTime); // set the ESP32's internal RTC to the correct time
+//  Serial.printf("Current time: %02d:%02d:%02d\n", myTime.tm_hour, myTime.tm_min, myTime.tm_sec);
+  timeClient.end(); // don't need it any more
+} /* GetInternetTime() */
+
+bool ConnectToInternet(void)
+{
+// Local instance of WiFiManager
+WiFiManager wm;
+bool res;
+
+  //wm.resetSettings(); // DEBUG
+
+  // Automatically connect using saved credentials,
+    // if connection fails, it starts an access point with the specified name ( "E_Paper_AP"),
+    // if empty will auto generate SSID, if password is blank it will be anonymous AP (wm.autoConnect())
+    // then goes into a blocking loop awaiting configuration and will return success result
+    wm.setEnableConfigPortal(false); // we want to know if connecting fails to inform user of what they're expected to do
+    wm.setConfigPortalTimeout(60); // keep active for 1 minute
+    res = wm.autoConnect("CYD_Weather"); // not password protected
+    if (!res) { // failed to connect or no saved credentials, start the config portal
+      lcd.fillScreen(TFT_BLACK);
+      lcd.setFont(FONT_12x16);
+      lcd.println("WiFi connection failed");
+      lcd.println("or missing credentials");
+      lcd.println("Use CYD_Weather/PW123456");
+      lcd.println("and navigate to:");
+      lcd.println("http://192.168.4.1");
+      lcd.println("To configure future");
+      lcd.println("automatic connections");
+      lcd.print("Will timeout in 60 sec");
+      res = wm.startConfigPortal("CYD_Weather", "PW123456");
+      if (!res) {
+          lcd.fillScreen(TFT_BLACK);
+          lcd.println("Config timed out");
+          lcd.println("Press reset to");
+          lcd.println("try again");
+          lcd.println("Shutting down...");
+          delay(2000000000); // sleep forever
+      }
+    } else {
+      lcd.println("WiFi Connected!");
+#ifdef LOG_TO_SERIAL
+      Serial.println("WiFi Connected!");
+#endif
+      return true;
+    }
+   return false;
+} /* ConnectToInternet() */
+
 void setup() {
 //  int iTimeout;
-lcd.begin(DISPLAY_CYD);
+lcd.begin(LCD);
 lcd.fillScreen(TFT_BLACK);
 lcd.setFont(FONT_12x16);
 lcd.setTextColor(TFT_GREEN, TFT_BLACK);
@@ -528,56 +597,6 @@ lcd.println("Starting WiFi Manager...");
   iDigitPos[4] = iDigitPos[3] + iCharWidth;
   iDigitPos[5] = lcd.width();
 
-// Local instance of WiFiManager
-WiFiManager wm;
-bool res;
-
-  //wm.resetSettings(); // DEBUG
-
-  // Automatically connect using saved credentials,
-    // if connection fails, it starts an access point with the specified name ( "E_Paper_AP"),
-    // if empty will auto generate SSID, if password is blank it will be anonymous AP (wm.autoConnect())
-    // then goes into a blocking loop awaiting configuration and will return success result
-    wm.setEnableConfigPortal(false); // we want to know if connecting fails to inform user of what they're expected to do
-    wm.setConfigPortalTimeout(60); // keep active for 1 minute
-    res = wm.autoConnect("CYD_Weather"); // not password protected
-    if (!res) { // failed to connect or no saved credentials, start the config portal
-      lcd.setFont(FONT_12x16);
-      lcd.println("WiFi connection failed");
-      lcd.println("or missing credentials");
-      lcd.println("Use CYD_Weather/PW123456");
-      lcd.println("and navigate to:");
-      lcd.println("http://192.168.4.1");
-      lcd.println("To configure future");
-      lcd.println("automatic connections");
-      lcd.print("Will timeout in 60 sec");
-      res = wm.startConfigPortal("CYD_Weather", "PW123456");
-      if (!res) {
-          lcd.fillScreen(TFT_BLACK);
-          lcd.println("Config timed out");
-          lcd.println("Press reset to");
-          lcd.println("try again");
-          lcd.println("Shutting down...");
-          deepSleep(2000000000); // sleep forever
-      }
-    } else {
-      lcd.println("WiFi Connected!");
-    }
-#ifdef LOG_TO_SERIAL
-  Serial.println("WiFi Connected!");
-#endif
-
-// Initialize a NTPClient to get time
-  timeClient.begin();
-  timeClient.setTimeOffset(TZ_OFFSET);  //My timezone
-  timeClient.update();
-  Serial.println(timeClient.getFormattedTime());
-  unsigned long epochTime = timeClient.getEpochTime();
-  //Get a time structure
-  struct tm *ptm = gmtime ((time_t *)&epochTime);
-  memcpy(&myTime, ptm, sizeof(myTime)); // get the current time struct into a local copy
-  Serial.printf("Current time: %02d:%02d:%02d\n", myTime.tm_hour, myTime.tm_min, myTime.tm_sec);
-//  timeClient.end(); // don't need it any more
 } /* setup() */
 
 void lightSleep(uint64_t time_in_ms)
@@ -612,10 +631,9 @@ int i, iHour, iMin, iSec;
 struct tm *ptm;
 unsigned long epochTime;
 
-  timeClient.update();
-  iHour = timeClient.getHours();
-  iMin = timeClient.getMinutes();
-  iSec = timeClient.getSeconds();
+  iHour = rtc.getHour();
+  iMin = rtc.getMinute();
+  iSec = rtc.getSecond();
 #ifdef TWELVE_HOUR
     if (iHour > 12) iHour -= 12;
     else if (iHour == 0) iHour = 12;
@@ -647,16 +665,13 @@ void loop() {
 int iSleepTime;
 int i;
 
-  if (GetWeather(&iSleepTime)) {
+  if (ConnectToInternet() && GetWeather(&iSleepTime)) {
+    GetInternetTime(); // update the internal RTC with accurate time
     DisplayWeather();
-    for (i=0; i<3600; i++) { // update weather every hour
+    for (i=0; i<3600; i++) { // update weather every hour and time every second
       DisplayTime();
       delay(1000);
     }
-//    delay(iSleepTime);
-   // lightSleep(iSleepTime); 
-    //deepSleep(iSleepTime); 
   }
-//  lightSleep(900000);
-//  deepSleep(900000); // failed to get weather info? try again every 15 minutes
+  delay(30000);
 } /* loop() */
