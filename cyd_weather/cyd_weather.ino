@@ -1,11 +1,12 @@
 //
-// ESP32 CYD (Cheap-Yellow-Display) Weather Info
+// ESP32 CYD (Cheap-Yellow-Display) Weather & Time Display
 // written by Larry Bank
 // Copyright (c) 2024 BitBank Software, Inc.
 //
 // Define the display type used and the rest of the code should "just work"
-
-#define LCD DISPLAY_CYD_2USB
+#define LCD DISPLAY_CYD_24R
+// Define your time zone offset in seconds relative to GMT. e.g. Eastern USA = -(3600 * 5)
+#define TZ_OFFSET (3600)
 
 #include <NTPClient.h>           //https://github.com/taranais/NTPClient
 #include <WiFi.h>
@@ -34,7 +35,6 @@ HTTPClient http;
 #include "hand_4bpp.h"
 
 //#define LOG_TO_SERIAL
-#define TZ_OFFSET 3600
 
 BB_SPI_LCD lcd;
 // Define NTP Client to get time
@@ -46,6 +46,7 @@ int iWind, rel_humid, temp, feels_temp, mintemp, maxtemp, cc_icon;
 String sSunrise, sSunset, updated;
 int iTemp[16], iHumidity[16], iWeatherCode[16]; // hourly conditions
 uint8_t uvIndex[8];
+char szOldTime[16];
 int iRainChance[16];
 int iDigitPos[6]; // clock digit positions
 int iCharWidth, iColonWidth;
@@ -626,7 +627,6 @@ void deepSleep(uint64_t time_in_ms)
 void DisplayTime(void)
 {
 char szTemp[2], szTime[32];
-static char szOld[32] = "       ";
 int i, iHour, iMin, iSec;
 struct tm *ptm;
 unsigned long epochTime;
@@ -642,12 +642,12 @@ unsigned long epochTime;
     if (iSec & 0x1) { // flash the colon
         szTime[2] = ' ';
     }
-    if (strcmp(szTime, szOld)) { // digit(s) changed, redraw them to minimize flicker
+    if (strcmp(szTime, szOldTime)) { // digit(s) changed, redraw them to minimize flicker
       szTemp[1] = 0;
       lcd.setFreeFont(&FONT);
       for (i=0; i<5; i++) {
-         if (szTime[i] != szOld[i]) {
-            szTemp[0] = szOld[i];
+         if (szTime[i] != szOldTime[i]) {
+            szTemp[0] = szOldTime[i];
             lcd.setTextColor(TFT_BLACK, TFT_BLACK+1);
             lcd.drawString(szTemp, iDigitPos[i], iStartY); // erase old character
             // draw new character
@@ -657,7 +657,7 @@ unsigned long epochTime;
             lcd.drawString(szTemp, iDigitPos[i], iStartY);
          } // if needs redraw
       } // for i
-      strcpy(szOld, szTime);
+      strcpy(szOldTime, szTime);
     }
 } /* DisplayTime() */
 
@@ -668,6 +668,7 @@ int i;
   if (ConnectToInternet() && GetWeather(&iSleepTime)) {
     GetInternetTime(); // update the internal RTC with accurate time
     DisplayWeather();
+    strcpy(szOldTime, "        "); // force complete repaint of time after wifi update
     for (i=0; i<3600; i++) { // update weather every hour and time every second
       DisplayTime();
       delay(1000);
