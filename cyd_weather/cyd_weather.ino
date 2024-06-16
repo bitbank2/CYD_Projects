@@ -4,7 +4,7 @@
 // Copyright (c) 2024 BitBank Software, Inc.
 //
 // Define the display type used and the rest of the code should "just work"
-#define LCD DISPLAY_CYD_24R
+#define LCD DISPLAY_CYD
 // Define your time zone offset in seconds relative to GMT. e.g. Eastern USA = -(3600 * 5)
 #define TZ_OFFSET (3600)
 
@@ -365,12 +365,12 @@ void DisplayWeather(void)
 // Request the latest weather info as JSON from wttr.in
 // Info is usually updated every 3 hours
 //
-int GetWeather(int *iSleepTime)
+int GetWeather(void)
 {
 char szTemp[64];
 int i, iHour, httpCode = -1;
 
-   *iSleepTime = (3 * 60 * 60 * 1000); // assume 3 hours
+lcd.println("Getting Weather Data...");
 
 #ifdef ARDUINO_ARCH_ESP32
    http.begin(url);
@@ -461,13 +461,13 @@ int i, iHour, httpCode = -1;
      strcpy(szTemp, updated.c_str());
      i = strlen(szTemp); // format is "2022-08-18 08:55 AM"
      iHour = atoi(&szTemp[i-8]);
-     if (szTemp[i-2] == 'P' && iHour > 6) {
-        i = 6 + (24-myTime.tm_hour); // hours to sleep until 6AM
-        *iSleepTime = i * 60 * 60 * 1000; // sleep until 6AM
-#ifdef LOG_TO_SERIAL
-        Serial.println("late evening report; sleep until 6AM");
-#endif
-     }
+//     if (szTemp[i-2] == 'P' && iHour > 6) {
+//        i = 6 + (24-myTime.tm_hour); // hours to sleep until 6AM
+//        *iSleepTime = i * 60 * 60 * 1000; // sleep until 6AM
+//#ifdef LOG_TO_SERIAL
+//        Serial.println("late evening report; sleep until 6AM");
+//#endif
+//     }
      temp = current_condition["temp_C"];
      iWind = current_condition["windspeedKmph"];
  //    desc = String((const char *)weatherdesc["value"]);
@@ -515,11 +515,112 @@ int i, iHour, httpCode = -1;
    }
 } /* GetWeather() */
 
+//
+// This function uses the ipapi.co website to convert
+// a public IP address into a time zone offset (HHMM)
+// It returns the offset in seconds from GMT
+//
+int GetTimeOffset(char *szIP)
+{
+  HTTPClient http;
+  int httpCode = -1;
+  char szTemp[256];
+
+  //format -> https://ipapi.co/<your public ip>/utc_offset/
+  sprintf(szTemp, "https://ipapi.co/%s/utc_offset/", szIP);
+  http.begin(szTemp);
+  httpCode = http.GET();  //send GET request
+  if (httpCode != 200) {
+     http.end();
+     return -1;
+  } else {
+     const char *s;
+     int i;
+     String payload = http.getString();
+     http.end();
+     s = payload.c_str();
+    // Get the raw HTTP response text (+HHMM)
+    // and convert the time zone offset (HHMM) into seconds
+    lcd.print("TZ offset ");
+    lcd.println(s);
+    i = ((s[1]-'0') * 10) + (s[2]-'0'); // hour
+    i *= 60;
+    i += ((s[3]-'0') * 10) + (s[4]-'0'); // minute
+    if (s[0] == '-')
+      i = -i; // negative offset
+    return (i*60); // return seconds
+  } // if successfully connected
+  return -1;
+} /* GetTimeOffset() */
+//
+// Get our external IP from ipify.org
+// Copy it into the given string variable
+// in the form (a.b.c.d)
+// Returns true for success
+//
+bool GetExternalIP(char *szIP)
+{
+  WiFiClient client;
+
+  if (!client.connect("api.ipify.org", 80)) {
+    lcd.println("api.ipify.org failed!");
+    return false;
+  }
+  else {
+    int timeout = millis() + 5000;
+    client.print("GET /?format=json HTTP/1.1\r\nHost: api.ipify.org\r\n\r\n");
+    while (client.available() == 0) {
+      if (timeout - millis() < 0) {
+        lcd.println("Client Timeout!");
+        client.stop();
+        return false;
+      }
+    }
+    // Get the raw HTTP+JSON response text
+    // and parse out just the IP address
+    int i, j, size, offset = 0;
+    char szTemp[256];
+    while ((size = client.available()) > 0) {
+      if (size+offset > 256) size = 256-offset;
+      size = client.read((uint8_t *)&szTemp[offset], size);
+      offset += size;
+    } // while data left to read
+
+    // parse the IP address we want
+    for (i=0; i<offset; i++) {
+      if (memcmp(&szTemp[i],"{\"ip\":\"", 7) == 0) {
+        for (j=i+7; j<offset && szTemp[j] != '\"'; j++) {
+          szIP[j-(i+7)] = szTemp[j];
+        } // for j
+        szIP[j-(i+7)] = 0; // zero terminate it
+        return true;
+      } // if found start of IP
+    } // for i
+  } // if successfully connected
+  return false;
+} /* GetExternalIP() */
+
 void GetInternetTime()
 {
+char szIP[32];
+int iTimeOffset; // offset in seconds
+
+  iTimeOffset = TZ_OFFSET; // start with fixed offset you can set in the program
+  if (GetExternalIP(szIP)) {
+    lcd.setTextColor(0xffe0);
+    lcd.println("My IP:");
+    lcd.println(szIP);
+    // Get our time zone offset (including daylight saving time)
+    iTimeOffset = GetTimeOffset(szIP);
+    if (iTimeOffset == -1) {
+      lcd.println("TZ Offset failed");
+    } else {
+      lcd.printf("Got TZ offset: %d\n", iTimeOffset);
+    }
+  }
 // Initialize a NTPClient to get time
   timeClient.begin();
-  timeClient.setTimeOffset(TZ_OFFSET);  //My timezone
+  timeClient.setTimeOffset(iTimeOffset);  //My timezone
   timeClient.update();
   Serial.println(timeClient.getFormattedTime());
   unsigned long epochTime = timeClient.getEpochTime();
@@ -662,11 +763,11 @@ unsigned long epochTime;
 } /* DisplayTime() */
 
 void loop() {
-int iSleepTime;
 int i;
 
-  if (ConnectToInternet() && GetWeather(&iSleepTime)) {
+  if (ConnectToInternet()) {
     GetInternetTime(); // update the internal RTC with accurate time
+    GetWeather();
     DisplayWeather();
     strcpy(szOldTime, "        "); // force complete repaint of time after wifi update
     for (i=0; i<3600; i++) { // update weather every hour and time every second
