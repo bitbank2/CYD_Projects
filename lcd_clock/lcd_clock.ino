@@ -4,17 +4,22 @@
 #include "humidity.h"
 #include "temp_bw.h"
 
-// Define BIG_LCD for 480x270 or 480x320 boards, otherwise it defaults to 320x240
-#define BIG_LCD
+// Define display type
+// CYD (original 2.8" resistive touch)
+#define CYD 0
+// CYD_543R (JC4827W543 w/resistive touch)
+#define CYD_543R 1
+// CYD_543C (JC4827W543 w/capacitive touch)
+#define CYD_543C 2
+// WT32_SC01_PLUS
+#define WT32_SC01_PLUS 3
+
+#define BOARD_TYPE CYD
 #define TWELVE_HOUR
 #define FARENHEIT
-//#define CAP_TOUCH
 
-#ifdef BIG_LCD
+#if BOARD_TYPE == CYD_543R
 #define LCD DISPLAY_CYD_543
-//#define LCD DISPLAY_CYD_35
-//#define SDA_PIN 21
-//#define SCL_PIN 22
 #define SDA_PIN 17
 #define SCL_PIN 18
 #define ICON_X1 60
@@ -27,7 +32,41 @@
 #include "DejaVu_Sans_Mono_Bold_48.h"
 #define SMALL_FONT DejaVu_Sans_Mono_Bold_48
 const int iStartY = 160;
-#else
+#endif
+
+#if BOARD_TYPE == WT32_SC01_PLUS
+#define LCD DISPLAY_WT32_SC01_PLUS
+#define CAP_TOUCH
+#define CT_ORIENTATION 90
+#define CT_SDA 33
+#define CT_SCL 32
+#define CT_RST 25
+#define CT_INT -1
+#endif
+
+#if BOARD_TYPE == CYD_543C
+#define CAP_TOUCH
+#define CT_ORIENTATION 0
+#define CT_SDA 8
+#define CT_SCL 4
+#define CT_RST 38
+#define CT_INT 3
+#define LCD DISPLAY_CYD_543
+#define SDA_PIN 17
+#define SCL_PIN 18
+#define ICON_X1 60
+#define ICON_X2 230
+#define TEMP_X 106
+#define CO2_X 268
+#define FONT Roboto_Thin100pt7b
+#define FONT_GLYPHS Roboto_Thin100pt7bGlyphs
+#include "Roboto_Thin100pt7b.h"
+#include "DejaVu_Sans_Mono_Bold_48.h"
+#define SMALL_FONT DejaVu_Sans_Mono_Bold_48
+const int iStartY = 160;
+#endif
+
+#if BOARD_TYPE == CYD
 #define LCD DISPLAY_CYD
 #define SDA_PIN 27
 #define SCL_PIN 22
@@ -44,10 +83,6 @@ const int iStartY = 104;
 #endif
 
 #ifdef CAP_TOUCH
-#define CT_SDA 33
-#define CT_SCL 32
-#define CT_RST 25
-#define CT_INT -1
 #include <bb_captouch.h>
 BBCapTouch bbct;
 #endif
@@ -75,7 +110,7 @@ uint32_t ButtonState(BUTTON *pButtons, int iButtonCount);
 #define BUTTON_COUNT 2
 int iDigitPos[6];
 
-#ifdef BIG_LCD
+#if BOARD_TYPE != CYD
 BUTTON buttons[BUTTON_COUNT] = {
   {0, 240, 200, 30, TFT_RED, "Set Time"},
   {280, 240, 200, 30, TFT_RED, "Night Mode"}
@@ -196,7 +231,9 @@ void setup()
   lcd.begin(LCD);
 #ifdef CAP_TOUCH
   bbct.init(CT_SDA, CT_SCL, CT_RST, CT_INT);
-  bbct.setOrientation(90, 320, 480); // angle, native width, native height
+#if CT_ORIENTATION != 0
+  bbct.setOrientation(CT_ORIENTATION, lcd.height(), lcd.width()); // angle, native width, native height
+#endif
 #else
   lcd.rtInit(); // start the resistive touch
 #endif
