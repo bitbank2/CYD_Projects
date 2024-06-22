@@ -12,7 +12,8 @@ int iCol, iRow, iCols, iRows;
 int iScroll = 0;
 
 //#define CYD_543
-
+#define SHOW_CURSOR
+int iCursor = 0; // current cursor state - 0=not visible, 1=visible
 #ifdef CYD_543
 #define LCD DISPLAY_CYD_543
 #define FONT FONT_12x16
@@ -36,6 +37,10 @@ void ScrollOneLine(void)
    lcd.setScrollPosition(iScroll);
 } /* ScrollOneLine() */
 
+void DrawCursor(int iShow)
+{
+  lcd.fillRect(iCol * CHAR_WIDTH, (iScroll + (iRow * CHAR_HEIGHT)) % lcd.height(), CHAR_WIDTH, CHAR_HEIGHT, (iShow) ? TFT_WHITE : TFT_BLACK);
+}
 void setup() {
   lcd.begin(LCD);
 #ifdef ORIENTATION
@@ -58,10 +63,26 @@ void setup() {
 
 void loop() {
   char cOld, c, cTemp[4];
+  int iTick = 0;
+
     cTemp[1] = 0; // used for 1 character "strings"
     cOld = 0; // last character
     while (1) {
-      if (!Serial.available()) continue;
+      if (!Serial.available()) {
+#ifdef SHOW_CURSOR
+         delay(1);
+         iTick++;
+         if ((iTick & 0x1ff) == 0) { // blink cursor
+            iCursor = 1-iCursor;
+            DrawCursor(iCursor);
+         }
+#endif // SHOW_CURSOR
+         continue;
+      }
+      if (iCursor) { // erase old cursor position
+          iCursor = 0;
+          DrawCursor(iCursor);
+      }
       c = Serial.read(); // read a single byte from the serial port
       if (c >= ' ') { // printable character
          if (iCol == iCols) { // next line
