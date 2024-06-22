@@ -44,10 +44,11 @@ void setup() {
   lcd.fillScreen(TFT_BLACK);
   iCols = lcd.width() / CHAR_WIDTH;
   iRows = lcd.height() / CHAR_HEIGHT;
-  iCol = 0; iRow = 4;
+  iCol = 0; iRow = 5;
   lcd.setFont(FONT); // use a large font
   lcd.setTextColor(TFT_GREEN, TFT_BLACK);
   lcd.println("Scrolling Serial Terminal Demo");
+  lcd.printf("%dx%d with the %dx%d font\n", iCols, iRows, CHAR_WIDTH, CHAR_HEIGHT);
   lcd.println("by Larry Bank");
   lcd.println("Waiting for serial connection");
   lcd.println("Config: 115200 baud, 8N1, CRLF");
@@ -56,31 +57,30 @@ void setup() {
 }
 
 void loop() {
-  char c, cTemp[4];
+  char cOld, c, cTemp[4];
     cTemp[1] = 0; // used for 1 character "strings"
-
+    cOld = 0; // last character
     while (1) {
       if (!Serial.available()) continue;
       c = Serial.read(); // read a single byte from the serial port
       if (c >= ' ') { // printable character
-         if (iCol == iCols-1) { // next line
+         if (iCol == iCols) { // next line
+            iCol = 0;
             if (iRow < iRows-1) {
               iRow++;
-              lcd.print("\n");
+              lcd.print("\n\r");
             } else {
               ScrollOneLine();
             }
-            iCol = 0;
          }
          cTemp[0] = c;
          lcd.print(cTemp);
          iCol++;
-      } else { // control characters
-        if (c == 0xd) {
+      } else { // control characters (CR / LF or CR+LF)
+        if (c == 0xd || (c == 0xa && cOld != 0xd)) {
           iCol = 0; // carriage return
-        } else if (c == 0xa) { // line feed
           if (iRow < iRows-1) {
-            lcd.print("\n");
+            lcd.print("\n\r");
             iRow++;
           } else {
             ScrollOneLine();
@@ -92,5 +92,6 @@ void loop() {
            }
         }
       }
+      cOld = c;
     } // while
 } /* loop() */
