@@ -158,7 +158,7 @@ const uint8_t *pEnd = &pSound[iLen];
            memcpy(&wavProps, pSound, sizeof(wavProperties_t));
            pSound += sizeof(wavProperties_t);
            state = HEADER_DATA;
-           i2s_set_sample_rates(I2S_NUM_0, wavProps.sampleRate); 
+           //i2s_set_sample_rates(I2S_NUM_0, wavProps.sampleRate); 
            //Serial.printf("Setting sample rate to %d\n", wavProps.sampleRate);
         break;
         case HEADER_DATA:
