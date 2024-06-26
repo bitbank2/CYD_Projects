@@ -1,11 +1,11 @@
 #include <bb_spi_lcd.h>
 #include <AnimatedGIF.h>
-#define GIF_NAME bart_396x222
+#define GIF_NAME thisisfine_128x128
 //#include "../test_images/nostromo.h"
-//include "thisisfine_128x128.h"
+#include "thisisfine_128x128.h"
 //#include "homer_car_240x135.h"
 //#include "hyperspace.h"
-#include "bart_396x222.h"
+//#include "bart_396x222.h"
 //#include "earth_128x128.h"
 
 uint8_t *pFrameBuffer, *pTurboBuffer;
@@ -19,7 +19,8 @@ uint8_t *pFrameBuffer, *pTurboBuffer;
 //#define CYD_24C
 //#define CYD_22C
 //#define CYD_543R
-#define CYD_SC01
+#define CYD_543C
+//#define CYD_SC01
 
 #ifdef CYD_SC01
 #define TOUCH_CAPACITIVE
@@ -40,6 +41,15 @@ uint8_t *pFrameBuffer, *pTurboBuffer;
 //#define TOUCH_SCL 22
 #define TOUCH_INT -1
 #define TOUCH_RST -1
+#endif
+
+#ifdef CYD_543C
+#define TOUCH_CAPACITIVE
+#define LCD DISPLAY_CYD_543
+#define TOUCH_SDA 8
+#define TOUCH_SCL 4
+#define TOUCH_INT 3
+#define TOUCH_RST 38
 #endif
 
 #ifdef CYD_543R
@@ -198,7 +208,7 @@ void loop() {
     int iFrame = 0;
       gif.setDrawType(GIF_DRAW_COOKED); // we want the library to generate ready-made pixels
       gif.setFrameBuf(pFrameBuffer);
-      while (gif.playFrame(false, NULL)) {
+      while (gif.playFrame(true, NULL)) {
         CheckTouch();
       }
       
