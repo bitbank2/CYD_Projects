@@ -3,10 +3,26 @@
 // written by Larry Bank
 // Copyright (c) 2024 BitBank Software, Inc.
 //
+#define LOG_TO_SERIAL
 // Define the display type used and the rest of the code should "just work"
-#define LCD DISPLAY_CYD
+#define LCD DISPLAY_CYD_543
 // Define your time zone offset in seconds relative to GMT. e.g. Eastern USA = -(3600 * 5)
+// The program will try to get it automatically, but will fall back on this value if that fails
 #define TZ_OFFSET (3600)
+int iTimeOffset; // offset in seconds
+
+// Uncomment this line to switch to use Openweathermap.org; make sure you have an API key first
+//#define USE_OPENWEATHERMAP
+#ifdef USE_OPENWEATHERMAP
+//Open Weather Settings
+String town="your_city";  // Customize for your city/town
+String Country="US";   // Customize for your country (2-letter code)
+const String endpoint = "http://api.openweathermap.org/data/2.5/weather?q="+town+","+Country+"&units=metric&APPID=";
+const String key = "your_api_key"; /*Your Open Weather API Key*/
+#else
+// Use wttr.in (no key required, but has been having some glitches lately)
+char url[]="https://wttr.in/?format=j1";
+#endif
 
 #include <NTPClient.h>           //https://github.com/taranais/NTPClient
 #include <WiFi.h>
@@ -22,6 +38,7 @@ HTTPClient http;
 #include "Roboto_Black_28.h"
 #include "Roboto_Black_40.h"
 #include "Roboto_Black_20.h"
+#include "Roboto_Black_16.h"
 #include "Roboto_25.h"
 #include "Roboto_Thin66pt7b.h"
 // black and white graphics
@@ -41,7 +58,6 @@ BB_SPI_LCD lcd;
 struct tm myTime;
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, "pool.ntp.org");
-char url[]="https://wttr.in/?format=j1";
 int iWind, rel_humid, temp, feels_temp, mintemp, maxtemp, cc_icon; 
 String sSunrise, sSunset, updated;
 int iTemp[16], iHumidity[16], iWeatherCode[16]; // hourly conditions
@@ -50,11 +66,10 @@ char szOldTime[16];
 int iRainChance[16];
 int iDigitPos[6]; // clock digit positions
 int iCharWidth, iColonWidth;
-int iStartX, iStarty;
+int iStartX, iStartY;
 #define FONT Roboto_Thin66pt7b
 #define FONT_GLYPHS Roboto_Thin66pt7bGlyphs
 uint16_t usColor = TFT_GREEN; // time color
-const int iStartY = 222;
 
 const char *szMonths[] = {"JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER"};
 const int iMonthLens[] = {31, 28, 31, 30, 31, 30, 31, 30, 30, 31, 30, 31};
@@ -190,9 +205,12 @@ void DisplayWeather(void)
     lcd.drawBMP((uint8_t *)humidity_4bpp,0,78);
     lcd.drawBMP((uint8_t *)wind_4bpp,108,0);
     lcd.drawBMP((uint8_t *)temp_4bpp,108,40);
+#ifndef USE_OPENWEATHERMAP
     lcd.drawBMP((uint8_t *)rain_4bpp,72,78);
     lcd.drawBMP((uint8_t *)uv_icon_4bpp,232,0);
+#endif
     lcd.setTextColor(TFT_WHITE, TFT_BLACK);
+    return; // debug
     strcpy(szTemp, sSunrise.c_str());
     szTemp[5] = 0; // don't need the AM/PM part
     s = szTemp; if (s[0] == '0') s++; // skip leading 0
@@ -229,24 +247,28 @@ void DisplayWeather(void)
     lcd.setCursor(272,28);
     lcd.printf("%d",j); // show max UV index
     // Show rain chance as a bar graphs for today and tomorrow
+#ifndef USE_OPENWEATHERMAP
     showRain(120, 89, 82, 27, "today", iRainChance);
     showRain(208, 89, 82, 27, "tomorrow", &iRainChance[8]);
+#endif // DEBUG
     return;
   } else { // 4.2" display
-    drawCalendar(&myTime, &Roboto_Black_20, 90, 148);
+    drawCalendar(&myTime, &Roboto_Black_16, 0, 148);
     // display sunrise+sunset times first
     lcd.drawBMP((uint8_t *)sunrise_4bpp,8,0);
     lcd.drawBMP((uint8_t *)sunset_4bpp,8,48);
     lcd.drawBMP((uint8_t *)wind_4bpp,180,0);
     lcd.drawBMP((uint8_t *)humidity_4bpp,180,48);
-    lcd.drawBMP((uint8_t *)uv_icon_4bpp,292,48);
     lcd.drawBMP((uint8_t *)temp_4bpp,8,96);
     lcd.drawBMP((uint8_t *)hand_4bpp,300,96);
+#ifndef USE_OPENWEATHERMAP
+    lcd.drawBMP((uint8_t *)uv_icon_4bpp,292,48);
     lcd.drawBMP((uint8_t *)rain_4bpp,24,144);
     lcd.drawBMP((uint8_t *)rain_4bpp,332,144);
     // Show rain chance as a bar graphs for today and tomorrow
     showRain(8, 200, 74, 62, "today", iRainChance);
     showRain(316, 200, 74, 62, "tomorrow", &iRainChance[8]);
+#endif // DEBUG
     strcpy(szTemp, sSunrise.c_str());
     szTemp[5] = 0; // don't need the AM/PM part
     s = szTemp; if (s[0] == '0') s++; // skip leading 0
@@ -268,6 +290,7 @@ void DisplayWeather(void)
     lcd.print(szTemp);
     lcd.setCursor(340, 132);
     lcd.print(feels_temp, DEC);
+#ifndef USE_OPENWEATHERMAP
     j = 0; // uv max index
     for (int i=0; i<8; i++) { // find min/max rain chance for today
 //      if (iRainChance[i] < iRMin) iRMin = iRainChance[i];
@@ -277,6 +300,7 @@ void DisplayWeather(void)
     lcd.setFreeFont(&Roboto_Black_40);
     lcd.setCursor(340,80);
     lcd.print(j,DEC); // show max UV index
+#endif
     return;
   }
   #ifdef BOGUS
@@ -371,44 +395,13 @@ char szTemp[64];
 int i, iHour, httpCode = -1;
 
 lcd.println("Getting Weather Data...");
-
-#ifdef ARDUINO_ARCH_ESP32
+   http.setAcceptEncoding("identity");
+#ifdef USE_OPENWEATHERMAP
+   http.begin(endpoint + key);
+#else // wttr.in
    http.begin(url);
+#endif
    httpCode = http.GET();  //send GET request
-#else // WiFiNINA
-   String payload = String("");
-// https://wttr.in/?format=j1
-  if (http.connectSSL("wttr.in", 443)) {
-#ifdef LOG_TO_SERIAL
-     Serial.println("Connected to weather server");
-#endif
-    http.println("GET /?format=j2 HTTP/1.1");
-    http.println("Host: wttr.in");
-    http.println("Connection: close");
-    http.println();
-    while (http.connected()) {
-      if (http.available()) {
-    //    char c = http.read();
-    //    payload.concat(c);
-        payload = http.readString();
-      } else {
-        delay(100); // wait for data to arrive
-      }
-    } // while connected
-    http.stop();
-    if (payload.length() > 1000) {
-       httpCode = 200; // count that as a success
-       i = payload.indexOf("{"); // look for starting curly brace (skip over HTTP info)
-       payload.remove(0, i); // remove those leading characters
-       Serial.print(payload);
-    }
-  } else {
-#ifdef LOG_TO_SERIAL
-     Serial.println("failed to connect to weather server");
-#endif
-  }
-#endif
-
    if (httpCode != 200) {
 #ifdef LOG_TO_SERIAL
      Serial.print("Error on HTTP request: ");
@@ -426,10 +419,13 @@ lcd.println("Getting Weather Data...");
 //     WiFi.mode(WIFI_OFF);
 //     esp_wifi_deinit(); // free memory used by WiFi
 #endif // ESP32
-
+     lcd.printf("%d bytes recvd\n", payload.length());
 #ifdef LOG_TO_SERIAL
      sprintf(szTemp, "Received %d bytes from server\n", payload.length());
      Serial.print(szTemp);
+     if (payload.length() < 4000) {
+        Serial.printf(payload.c_str());
+     }
 #endif
 //     StaticJsonDocument<80000> doc;
      DynamicJsonDocument doc(26000); // hopefully this is enough to capture the data; latest request returns 48k of text
@@ -444,11 +440,33 @@ lcd.println("Getting Weather Data...");
        Serial.print("deserialization error ");
        Serial.println(err.c_str());
 #endif
+       lcd.printf("deserialization error %s\n", err.c_str());
        return 0;
      }
 #ifdef LOG_TO_SERIAL
      Serial.println("Deserialization succeeded!");
 #endif
+
+#ifdef USE_OPENWEATHERMAP
+//     JsonArray cca = doc["main"].as<JsonArray>();
+     feels_temp = doc["main"]["feels_like"];
+     rel_humid = doc["main"]["humidity"];
+     temp = doc["main"]["temp"];
+     mintemp = doc["main"]["temp_min"];
+     maxtemp = doc["main"]["temp_max"];
+     const time_t iSunrise = doc["sys"]["sunrise"].as<int>() + iTimeOffset;
+     struct tm *stime;
+     stime = gmtime(&iSunrise);
+     sprintf(szTemp, "%d:%02d", (stime->tm_hour > 12) ? stime->tm_hour-12 : stime->tm_hour, stime->tm_min);
+     sSunrise = String(szTemp);
+     const time_t iSunset = doc["sys"]["sunset"].as<int>() + iTimeOffset;
+     stime = gmtime(&iSunset);
+     sprintf(szTemp, "%d:%02d", (stime->tm_hour > 12) ? stime->tm_hour-12 : stime->tm_hour, stime->tm_min);
+     sSunset = String(szTemp);
+     iWind = doc["wind"]["speed"];
+     time_t iUpdated = doc["dt"].as<int>() + iTimeOffset;
+     updated = String(ctime(&iUpdated)); // last update time
+#else // WTTR.IN
      JsonArray cca = doc["current_condition"].as<JsonArray>();
      JsonObject current_condition = cca[0];
 //     JsonArray wd = current_condition["weatherDesc"].as<JsonArray>();
@@ -511,6 +529,7 @@ lcd.println("Getting Weather Data...");
      sprintf(szTemp, "sunrise: %s, sunset: %s, mintemp = %d, maxtemp = %d\n", sSunrise.c_str(), sSunset.c_str(), mintemp, maxtemp);
      Serial.print(szTemp);
 #endif
+#endif // WTTR.IN
      return 1;
    }
 } /* GetWeather() */
@@ -603,7 +622,6 @@ bool GetExternalIP(char *szIP)
 void GetInternetTime()
 {
 char szIP[32];
-int iTimeOffset; // offset in seconds
 
   iTimeOffset = TZ_OFFSET; // start with fixed offset you can set in the program
   if (GetExternalIP(szIP)) {
@@ -691,7 +709,12 @@ lcd.println("Starting WiFi Manager...");
 // Prepare positions of clock digits
   iCharWidth = FONT_GLYPHS['0' - ' '].xAdvance;
   iColonWidth = FONT_GLYPHS[':' - ' '].xAdvance;
-  iStartX = (lcd.width() - (4*iCharWidth + iColonWidth))/2;
+  if (lcd.width() == 480) {
+    iStartX = lcd.width() - (4*iCharWidth + iColonWidth);
+  } else {
+    iStartX = (lcd.width() - (4*iCharWidth + iColonWidth))/2;
+  }
+  iStartY = lcd.height() - 18;
   iDigitPos[0] = iStartX;
   iDigitPos[1] = iStartX+iCharWidth;
   iDigitPos[2] = iStartX+iCharWidth*2;

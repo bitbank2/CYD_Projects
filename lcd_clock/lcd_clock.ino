@@ -14,7 +14,7 @@
 // WT32_SC01_PLUS
 #define WT32_SC01_PLUS 3
 
-#define BOARD_TYPE CYD
+#define BOARD_TYPE CYD_543R
 #define TWELVE_HOUR
 #define FARENHEIT
 
