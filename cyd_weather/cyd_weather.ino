@@ -3,9 +3,9 @@
 // written by Larry Bank
 // Copyright (c) 2024 BitBank Software, Inc.
 //
-#define LOG_TO_SERIAL
+//#define LOG_TO_SERIAL
 // Define the display type used and the rest of the code should "just work"
-#define LCD DISPLAY_CYD_543
+#define LCD DISPLAY_CYD_2USB
 // Define your time zone offset in seconds relative to GMT. e.g. Eastern USA = -(3600 * 5)
 // The program will try to get it automatically, but will fall back on this value if that fails
 #define TZ_OFFSET (3600)
@@ -210,7 +210,6 @@ void DisplayWeather(void)
     lcd.drawBMP((uint8_t *)uv_icon_4bpp,232,0);
 #endif
     lcd.setTextColor(TFT_WHITE, TFT_BLACK);
-    return; // debug
     strcpy(szTemp, sSunrise.c_str());
     szTemp[5] = 0; // don't need the AM/PM part
     s = szTemp; if (s[0] == '0') s++; // skip leading 0
@@ -263,11 +262,10 @@ void DisplayWeather(void)
     lcd.drawBMP((uint8_t *)hand_4bpp,300,96);
 #ifndef USE_OPENWEATHERMAP
     lcd.drawBMP((uint8_t *)uv_icon_4bpp,292,48);
-    lcd.drawBMP((uint8_t *)rain_4bpp,24,144);
-    lcd.drawBMP((uint8_t *)rain_4bpp,332,144);
+    lcd.drawBMP((uint8_t *)rain_4bpp,420,0);
     // Show rain chance as a bar graphs for today and tomorrow
-    showRain(8, 200, 74, 62, "today", iRainChance);
-    showRain(316, 200, 74, 62, "tomorrow", &iRainChance[8]);
+    showRain(400, 56, 80, 32, "today", iRainChance);
+    showRain(400, 104, 80, 32, "tomorrow", &iRainChance[8]);
 #endif // DEBUG
     strcpy(szTemp, sSunrise.c_str());
     szTemp[5] = 0; // don't need the AM/PM part
@@ -393,13 +391,18 @@ int GetWeather(void)
 {
 char szTemp[64];
 int i, iHour, httpCode = -1;
+JsonDocument doc;
+DeserializationError err;
 
 lcd.println("Getting Weather Data...");
-   http.setAcceptEncoding("identity");
+
+//http.useHTTP10(true);
+http.setUserAgent("Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:78.0) Gecko/20100101 Firefox/78.0");
 #ifdef USE_OPENWEATHERMAP
    http.begin(endpoint + key);
 #else // wttr.in
    http.begin(url);
+   http.setTimeout(5000);
 #endif
    httpCode = http.GET();  //send GET request
    if (httpCode != 200) {
@@ -412,29 +415,26 @@ lcd.println("Getting Weather Data...");
 #endif
      return 0;
    } else {
-#ifdef ARDUINO_ARCH_ESP32
-     String payload = http.getString();
+    long l = millis();
+    WiFiClient * stream = http.getStreamPtr();
+    String payload = "";
+    int iPayloadSize = http.getSize();
+#ifdef LOG_TO_SERIAL
+    Serial.printf("payload size = %d\n", iPayloadSize);
+#endif
+    while (payload.length() < iPayloadSize && (millis() - l) < 4000) {
+      if (stream->available()) {
+        char c = stream->read();
+        payload += c;
+      } else {
+        vTaskDelay(5); // allow time for data to receive
+      }
+    } // while
+#ifdef LOG_TO_SERIAL
+    Serial.printf("read %d bytes from stream\n\r", payload.length());
+#endif
+     err = deserializeJson(doc, payload);
      http.end();
-//     WiFi.disconnect(true);
-//     WiFi.mode(WIFI_OFF);
-//     esp_wifi_deinit(); // free memory used by WiFi
-#endif // ESP32
-     lcd.printf("%d bytes recvd\n", payload.length());
-#ifdef LOG_TO_SERIAL
-     sprintf(szTemp, "Received %d bytes from server\n", payload.length());
-     Serial.print(szTemp);
-     if (payload.length() < 4000) {
-        Serial.printf(payload.c_str());
-     }
-#endif
-//     StaticJsonDocument<80000> doc;
-     DynamicJsonDocument doc(26000); // hopefully this is enough to capture the data; latest request returns 48k of text
-#ifdef LOG_TO_SERIAL
-     sprintf(szTemp, "JsonDocument::capacity() = %d\n", (int)doc.capacity());
-     Serial.print(szTemp);
-#endif
-     DeserializationError err = deserializeJson(doc, payload);
-     doc.shrinkToFit();
      if (err) {
 #ifdef LOG_TO_SERIAL
        Serial.print("deserialization error ");
@@ -448,7 +448,6 @@ lcd.println("Getting Weather Data...");
 #endif
 
 #ifdef USE_OPENWEATHERMAP
-//     JsonArray cca = doc["main"].as<JsonArray>();
      feels_temp = doc["main"]["feels_like"];
      rel_humid = doc["main"]["humidity"];
      temp = doc["main"]["temp"];
@@ -493,15 +492,12 @@ lcd.println("Getting Weather Data...");
      JsonArray wa = doc["weather"].as<JsonArray>();
      JsonObject weather = wa[0];
      JsonArray aa = weather["astronomy"].as<JsonArray>();
-     #ifdef ARDUINO_ARCH_ESP32
      JsonArray ha = weather["hourly"].as<JsonArray>();
-     #endif
      JsonObject astronomy = aa[0];
      sSunrise = String((const char *)astronomy["sunrise"]);
      sSunset = String((const char *)astronomy["sunset"]);
      mintemp = weather["mintempC"];
      maxtemp = weather["maxtempC"];
-     #ifdef ARDUINO_ARCH_ESP32
      // get hourly info for today
      for (int i=0; i<8; i++) {
        iTemp[i] = ha[i]["tempC"];
@@ -519,11 +515,6 @@ lcd.println("Getting Weather Data...");
        iWeatherCode[i+8] = ha[i]["weatherCode"];
        iRainChance[i+8] = ha[i]["chanceofrain"];
      }
-     #else // less capable WiFiNINA version
-     memset(iRainChance, 0, sizeof(iRainChance));
-     memset(uvIndex, 0, sizeof(uvIndex));
-     uvIndex[0] = weather["uvIndex"];
-     #endif
 #ifdef LOG_TO_SERIAL
 //     Serial.printf("Humidity = %d%%, temp = %dC, Conditions: %s\n", rel_humid, temp, desc.c_str());
      sprintf(szTemp, "sunrise: %s, sunset: %s, mintemp = %d, maxtemp = %d\n", sSunrise.c_str(), sSunset.c_str(), mintemp, maxtemp);
