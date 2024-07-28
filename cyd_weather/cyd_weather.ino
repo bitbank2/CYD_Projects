@@ -654,7 +654,7 @@ bool res;
     // if empty will auto generate SSID, if password is blank it will be anonymous AP (wm.autoConnect())
     // then goes into a blocking loop awaiting configuration and will return success result
     wm.setEnableConfigPortal(false); // we want to know if connecting fails to inform user of what they're expected to do
-    wm.setConfigPortalTimeout(60); // keep active for 1 minute
+    wm.setConfigPortalTimeout(120); // keep active for 2 minutes
     res = wm.autoConnect("CYD_Weather"); // not password protected
     if (!res) { // failed to connect or no saved credentials, start the config portal
       lcd.fillScreen(TFT_BLACK);
@@ -666,13 +666,14 @@ bool res;
       lcd.println("http://192.168.4.1");
       lcd.println("To configure future");
       lcd.println("automatic connections");
-      lcd.print("Will timeout in 60 sec");
+      lcd.print("Will timeout in 2 min");
       res = wm.startConfigPortal("CYD_Weather", "PW123456");
       if (!res) {
           lcd.fillScreen(TFT_BLACK);
+          lcd.setCursor(0,0);
           lcd.println("Config timed out");
-          lcd.println("Press reset to");
-          lcd.println("try again");
+          lcd.println("Press reset or power");
+          lcd.println("off to try again");
           lcd.println("Shutting down...");
           delay(2000000000); // sleep forever
       }

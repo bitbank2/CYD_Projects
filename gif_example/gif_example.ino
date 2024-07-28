@@ -1,21 +1,22 @@
 #include <bb_spi_lcd.h>
 #include <AnimatedGIF.h>
-#define GIF_NAME thisisfine_128x128
+#define GIF_NAME hyperspace
 //#include "../test_images/nostromo.h"
-#include "thisisfine_128x128.h"
+//#include "thisisfine_128x128.h"
 //#include "homer_car_240x135.h"
-//#include "hyperspace.h"
+#include "hyperspace.h"
 //#include "bart_396x222.h"
 //#include "earth_128x128.h"
 
 uint8_t *pFrameBuffer, *pTurboBuffer;
-
+bool bDMA;
 //#define T_S3_LONG
 //#define T_S3_PRO
 //#define CYD_28R
 //#define CYD_35C
 //#define CYD_128C
 //#define CYD_28C
+//#define CYD_24R
 //#define CYD_24C
 //#define CYD_22C
 //#define CYD_543R
@@ -61,13 +62,14 @@ uint8_t *pFrameBuffer, *pTurboBuffer;
 #define TOUCH_CS 38
 #endif
 
+#ifdef CYD_24R
+#define TOUCH_RESISTIVE
+#define LCD DISPLAY_CYD_24R
+#endif
+
 #ifdef CYD_28R
 #define TOUCH_RESISTIVE
 #define LCD DISPLAY_CYD
-#define TOUCH_MISO 39
-#define TOUCH_MOSI 32
-#define TOUCH_CLK 25
-#define TOUCH_CS 33
 #endif
 
 #ifdef T_S3_LONG
@@ -140,19 +142,16 @@ void GIFDraw(GIFDRAW *pDraw)
     lcd.setAddrWindow(iOffX + pDraw->iX, iOffY + pDraw->iY, pDraw->iWidth, pDraw->iHeight);
   }
   // For all other lines, just push the pixels to the display
-  lcd.pushPixels((uint16_t *)pDraw->pPixels, pDraw->iWidth, DRAW_TO_LCD | DRAW_WITH_DMA);
+  lcd.pushPixels((uint16_t *)pDraw->pPixels, pDraw->iWidth, (bDMA) ? DRAW_TO_LCD | DRAW_WITH_DMA : DRAW_TO_LCD);
 } /* GIFDraw() */
 
 void setup() {
   Serial.begin(115200);
-  delay(3000);
+//  delay(3000);
   Serial.println("Starting");
   gif.begin(BIG_ENDIAN_PIXELS);
   lcd.begin(LCD);
- // lcd.begin(DISPLAY_TUFTY2040);
   Serial.println("LCD started");
-  //lcd.begin(DISPLAY_T_DISPLAY_S3_AMOLED);
- // lcd.setRotation(270);
   lcd.fillScreen(TFT_BLACK);
   lcd.setTextColor(TFT_GREEN, TFT_BLACK);
   lcd.setFont(FONT_8x8);
@@ -160,12 +159,11 @@ void setup() {
   lcd.println("GIF + Touch Test");
   lcd.println("Touch to pause/unpause");
   Serial.println("GIF + Touch Test");
-  delay(3000);
 #ifdef TOUCH_CAPACITIVE
    bbct.init(TOUCH_SDA, TOUCH_SCL, TOUCH_RST, TOUCH_INT);
 #endif
 #ifdef TOUCH_RESISTIVE
-   lcd.rtInit(TOUCH_MOSI, TOUCH_MISO, TOUCH_CLK, TOUCH_CS);
+   lcd.rtInit();
 #endif
 } /* setup() */
 
@@ -191,13 +189,17 @@ TOUCHINFO ti;
 } /* CheckTouch() */
 
 void loop() {
-  int w, h;
+  int w, h, iFPS1, iFPS2;
    long l;
   if (gif.open((uint8_t *)GIF_NAME, sizeof(GIF_NAME), GIFDraw)) {
     w = gif.getCanvasWidth();
     h = gif.getCanvasHeight();
     iOffX = (lcd.width() - w)/2;
     iOffY = (lcd.height() - h)/2;
+    lcd.printf("Canvas size: %dx%d\n", w, h);
+    lcd.printf("Loop count: %d\n", gif.getLoopCount());
+    delay(3000);
+    lcd.fillScreen(TFT_BLACK);
  //   Serial.printf("Successfully opened GIF; Canvas size = %d x %d\n", w, h);
 #ifdef ARDUINO_ARCH_ESP32
     pFrameBuffer = (uint8_t *)heap_caps_malloc(w*(h+2), MALLOC_CAP_8BIT);
@@ -208,13 +210,36 @@ void loop() {
     int iFrame = 0;
       gif.setDrawType(GIF_DRAW_COOKED); // we want the library to generate ready-made pixels
       gif.setFrameBuf(pFrameBuffer);
-      while (gif.playFrame(true, NULL)) {
-        CheckTouch();
-      }
-      
-      gif.reset();
+      bDMA = false;
+      l = millis();
+      for (int i=0; i<4; i++) { // run it 4 times
+        while (gif.playFrame(false, NULL)) {
+//        CheckTouch();
+            iFrame++;
+        }
+        gif.reset();
+      } // for i
       l = millis() - l;
-   //   Serial.printf("decoded %d frames in %d ms\n", iFrame, (int)l);
-    }
+      iFPS1 = ((iFrame*1000)/l);
+      // test with DMA enabled
+      bDMA = true;
+      iFrame = 0;
+      l = millis();
+      for (int i=0; i<4; i++) { // run it 4 times
+        while (gif.playFrame(false, NULL)) {
+//        CheckTouch();
+            iFrame++;
+        }
+        gif.reset();
+      } // for i
+      l = millis() - l;
+      iFPS2 = ((iFrame*1000)/l);
+      lcd.setCursor(0,0);
+      lcd.setFont(FONT_12x16);
+      lcd.printf("Without DMA: %d fps\n", iFPS1);
+      lcd.printf("With DMA: %d fps\n", iFPS2);
+      delay(10000);
+      lcd.fillScreen(TFT_BLACK);
   } // while (1)
+  } // gif open
 } /* loop() */
