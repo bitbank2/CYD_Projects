@@ -1,12 +1,12 @@
 #include <bb_spi_lcd.h>
 #include <AnimatedGIF.h>
-#define GIF_NAME hyperspace
+#define GIF_NAME earth_128x128
 //#include "../test_images/nostromo.h"
 //#include "thisisfine_128x128.h"
 //#include "homer_car_240x135.h"
-#include "hyperspace.h"
+//#include "hyperspace.h"
 //#include "bart_396x222.h"
-//#include "earth_128x128.h"
+#include "earth_128x128.h"
 
 uint8_t *pFrameBuffer, *pTurboBuffer;
 bool bDMA;
@@ -20,7 +20,7 @@ bool bDMA;
 //#define CYD_24C
 //#define CYD_22C
 //#define CYD_543R
-#define CYD_543C
+//#define CYD_543C
 //#define CYD_SC01
 
 #ifdef CYD_SC01
@@ -150,7 +150,7 @@ void setup() {
 //  delay(3000);
   Serial.println("Starting");
   gif.begin(BIG_ENDIAN_PIXELS);
-  lcd.begin(LCD);
+  lcd.begin(DISPLAY_LOLIN_S3_MINI_PRO); //LCD);
   Serial.println("LCD started");
   lcd.fillScreen(TFT_BLACK);
   lcd.setTextColor(TFT_GREEN, TFT_BLACK);
@@ -235,9 +235,13 @@ void loop() {
       l = millis() - l;
       iFPS2 = ((iFrame*1000)/l);
       lcd.setCursor(0,0);
-      lcd.setFont(FONT_12x16);
-      lcd.printf("Without DMA: %d fps\n", iFPS1);
-      lcd.printf("With DMA: %d fps\n", iFPS2);
+      if (lcd.width() < 240) {
+        lcd.setFont(FONT_8x8);
+      } else {
+        lcd.setFont(FONT_12x16);
+      }
+      lcd.printf("W/O DMA: %d fps\n", iFPS1);
+      lcd.printf("W/  DMA: %d fps\n", iFPS2);
       delay(10000);
       lcd.fillScreen(TFT_BLACK);
   } // while (1)

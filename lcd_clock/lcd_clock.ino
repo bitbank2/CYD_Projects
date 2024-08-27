@@ -13,10 +13,28 @@
 #define CYD_543C 2
 // WT32_SC01_PLUS
 #define WT32_SC01_PLUS 3
+// CYD_550C (JC8048W550 w/capacitive touch)
+#define CYD_550 4
 
 #define BOARD_TYPE CYD_543R
 #define TWELVE_HOUR
 #define FARENHEIT
+
+#if BOARD_TYPE == CYD_550
+#define LCD DISPLAY_CYD_8048
+#define SDA_PIN 17
+#define SCL_PIN 18
+#define ICON_X1 60
+#define ICON_X2 230
+#define TEMP_X 106
+#define CO2_X 268
+#define FONT Roboto_Thin100pt7b
+#define FONT_GLYPHS Roboto_Thin100pt7bGlyphs
+#include "Roboto_Thin100pt7b.h"
+#include "DejaVu_Sans_Mono_Bold_48.h"
+#define SMALL_FONT DejaVu_Sans_Mono_Bold_48
+const int iStartY = 160;
+#endif
 
 #if BOARD_TYPE == CYD_543R
 #define LCD DISPLAY_CYD_543
