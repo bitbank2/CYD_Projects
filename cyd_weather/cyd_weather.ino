@@ -5,11 +5,12 @@
 //
 //#define LOG_TO_SERIAL
 // Define the display type used and the rest of the code should "just work"
-#define LCD DISPLAY_CYD_2USB
+#define LCD DISPLAY_CYD
 // Define your time zone offset in seconds relative to GMT. e.g. Eastern USA = -(3600 * 5)
 // The program will try to get it automatically, but will fall back on this value if that fails
 #define TZ_OFFSET (3600)
 int iTimeOffset; // offset in seconds
+char szTemp[1024];
 
 // Uncomment this line to switch to use Openweathermap.org; make sure you have an API key first
 //#define USE_OPENWEATHERMAP
@@ -164,7 +165,7 @@ void showRain(int x, int y, int cx, int cy, const char *szLabel, int *pValues)
 //
 void DisplayWeather(void)
 {
-  char *s, szTemp[64];
+  char *s;
   int i, j;
 
   lcd.fillScreen(TFT_BLACK);
@@ -534,7 +535,6 @@ int GetTimeOffset(char *szIP)
 {
   HTTPClient http;
   int httpCode = -1;
-  char szTemp[256];
 
   //format -> https://ipapi.co/<your public ip>/utc_offset/
   sprintf(szTemp, "https://ipapi.co/%s/utc_offset/", szIP);
@@ -578,20 +578,21 @@ bool GetExternalIP(char *szIP)
   }
   else {
     int timeout = millis() + 5000;
-    client.print("GET /?format=json HTTP/1.1\r\nHost: api.ipify.org\r\n\r\n");
+    client.print("GET /?format=json HTTP/1.1\r\nHost: api.ipify.org\r\nConnection: close\r\n\r\n");
     while (client.available() == 0) {
       if (timeout - millis() < 0) {
         lcd.println("Client Timeout!");
         client.stop();
         return false;
+      } else {
+        delay(10);
       }
     }
     // Get the raw HTTP+JSON response text
     // and parse out just the IP address
     int i, j, size, offset = 0;
-    char szTemp[256];
-    while ((size = client.available()) > 0) {
-      if (size+offset > 256) size = 256-offset;
+    while ((size = client.available()) > 0 && offset < sizeof(szTemp)) {
+      if (size+offset > sizeof(szTemp)) size = sizeof(szTemp)-offset;
       size = client.read((uint8_t *)&szTemp[offset], size);
       offset += size;
     } // while data left to read
